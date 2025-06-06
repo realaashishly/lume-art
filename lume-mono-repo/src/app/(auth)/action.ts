@@ -5,7 +5,7 @@ export const handleSignIn = async () => {
     try {
         await authClient.signIn.social({
             provider: "google",
-            callbackURL: "/dashboard",
+            callbackURL: "/explore",
             // errorCallbackURL: "/error",
             // newUserCallbackURL: "/welcome",
             // disableRedirect: true,
