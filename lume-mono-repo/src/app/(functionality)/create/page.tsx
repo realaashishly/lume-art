@@ -38,16 +38,26 @@ export default function page() {
         });
 
         // Group images by date
-        const grouped = sortedImages.reduce((acc, image) => {
-            const date = new Date(image.createdAt);
-            const dateKey = date.toDateString(); // Format: "Mon Jan 01 2024"
+        const grouped = sortedImages.reduce(
+            (acc, image) => {
+                const date = new Date(image.createdAt);
+                const dateKey = date.toDateString(); // Format: "Mon Jan 01 2024"
 
-            if (!acc[dateKey]) {
-                acc[dateKey] = [];
-            }
-            acc[dateKey].push(image);
-            return acc;
-        }, {} as Record<string, typeof data>);
+                if (!acc[dateKey]) {
+                    acc[dateKey] = [];
+                }
+                acc[dateKey].push(image);
+                return acc;
+            },
+            {} as Record<
+                string,
+                Array<{
+                    _id: string;
+                    imageUrls: string[];
+                    createdAt: string;
+                }>
+            >
+        );
 
         return grouped;
     }, [data]);
@@ -81,7 +91,6 @@ export default function page() {
         <LayoutWrapper>
             <Header />
             <div className='relative w-full min-h-[80vh] px-4 py-4'>
-                
                 <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2'>
                     {isFetchingImages &&
                         Array.from({ length: 10 }).map((_, index) => (
@@ -138,7 +147,13 @@ export default function page() {
 
                                     {/* Images Grid for this date */}
                                     <div className=''>
-                                        {images.map((image, index) => (
+                                        {(
+                                            images as Array<{
+                                                _id: string;
+                                                imageUrls: string[];
+                                                createdAt: string;
+                                            }>
+                                        ).map((image, index) => (
                                             <Link
                                                 href={`/g/${image._id}`}
                                                 key={`image-${dateKey}-${index}`}

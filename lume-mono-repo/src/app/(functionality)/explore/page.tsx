@@ -22,7 +22,7 @@ export default function DashboardPage() {
         return (
             <LayoutWrapper>
                 <Header />
-                <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2'>
+                <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 p-4'>
                     {[...Array(12)].map((_, i) => (
                         <Skeleton key={i} className='aspect-square' />
                     ))}

@@ -1,8 +1,9 @@
 "use client";
-import { handleSignIn } from "@/app/(auth)/action";
-import { authClient } from "@/app/(auth)/auth-client";
+
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { authClient } from "../(auth)/auth-client";
+import { handleSignIn } from "../(auth)/action";
 
 export default function Header() {
     const { data } = authClient.useSession();

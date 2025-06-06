@@ -1,12 +1,10 @@
-import Header from "@/app/(landing)/Header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { connectToDatabase } from "@/lib/mongoose";
 import { WandSparkles } from "lucide-react";
 import Link from "next/link";
+import Header from "./Header";
 
 export default function Home() {
-    connectToDatabase();
     return (
         <section className='p-6'>
             <Header />

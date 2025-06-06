@@ -1,9 +1,10 @@
 "use client";
-import { authClient } from "@/app/(auth)/auth-client";
-import { CurrentPageName } from "@/utils/getCurrentPath";
+
 import { Bell, Plus, Telescope, UserCircle } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
+import { authClient } from "../app/(auth)/auth-client";
+import { CurrentPageName } from "../utils/getCurrentPath";
+import { Avatar, AvatarFallback, AvatarImage } from "components/ui/avatar";
 
 export default function Header() {
     const { data } = authClient.useSession();
@@ -44,12 +45,10 @@ export default function Header() {
                     aria-label='User Profile'
                 >
                     {data ? (
-                        <Image
-                            src={data.user.image!}
-                            alt='User avatar'
-                            width={50}
-                            height={50}
-                        />
+                        <Avatar>
+                            <AvatarImage src={data.user.image!} />
+                            <AvatarFallback>CN</AvatarFallback>
+                        </Avatar>
                     ) : (
                         <UserCircle size={20} />
                     )}

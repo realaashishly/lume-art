@@ -1,5 +1,5 @@
-import { authClient } from "@/app/(auth)/auth-client";
 import { toast } from "sonner";
+import { authClient } from "./auth-client";
 
 export const handleSignIn = async () => {
     try {
