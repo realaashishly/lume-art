@@ -14,7 +14,7 @@ interface ImageData {
     _id: string;
     imageUrls: string[];
     createdAt: string;
-    title: string;
+    title?: string;
     prompt: string;
     likes?: number; // Add likes for the like button
     comments?: number; // Add comments for the comment/share button
