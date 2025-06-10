@@ -30,7 +30,7 @@ import { toast } from "sonner";
 // Store image function with proper typing
 const storeImage = async (imageData: {
     prompt: string;
-    title: string;
+    title?: string;
     imageUrls: string[];
     aspect: AspectRatio;
     variations: string;
@@ -115,7 +115,7 @@ export default function ImagePromptInput({
                 // const title =
                 //     (await titleResponse.data.title) || prompt.slice(0, 10);
 
-                const title = prompt.slice(1, 10);
+                // const title = prompt.slice(1, 10);
 
                 // Generate images concurrently
                 const imagePromises = Array.from(
@@ -149,7 +149,6 @@ export default function ImagePromptInput({
                 // Store the generated image data
                 storeImageMutation({
                     prompt,
-                    title,
                     imageUrls: generatedImages,
                     aspect,
                     variations,
