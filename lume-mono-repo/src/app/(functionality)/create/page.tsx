@@ -8,6 +8,7 @@ import { fetchImages } from "@/utils/fetchImages";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Heart, Maximize2, X, ZoomIn } from "lucide-react";
 import Link from "next/link";
+import { format, parseISO } from 'date-fns';
 import { useMemo, useState } from "react";
 
 export default function page() {
@@ -46,38 +47,21 @@ export default function page() {
 
     // Sort and group images by date
     const organizedImages = useMemo(() => {
-        if (!Array.isArray(data) || data.length === 0) return {};
+        if (!Array.isArray(data) || !data.length) return {};
 
-        // Sort images by createdAt in descending order (newest first)
-        const sortedImages = [...data].sort((a, b) => {
-            const dateA = new Date(a.createdAt);
-            const dateB = new Date(b.createdAt);
-            return dateB.getTime() - dateA.getTime();
-        });
-
-        // Group images by date
-        const grouped = sortedImages.reduce(
-            (acc, image) => {
-                const date = new Date(image.createdAt);
-                const dateKey = date.toDateString(); // Format: "Mon Jan 01 2024"
-
-                if (!acc[dateKey]) {
-                    acc[dateKey] = [];
-                }
-                acc[dateKey].push(image);
+        return data
+            .filter((image): image is typeof image & { imageUrl: string } => Boolean(image.imageUrl))
+            .sort(
+                (a, b) =>
+                    parseISO(b.createdAt).getTime() -
+                    parseISO(a.createdAt).getTime()
+            )
+            .reduce<Record<string, Array<{ _id: string; imageUrl: string; createdAt: string }>>>((acc, { _id, imageUrl, createdAt }) => {
+                const dateKey = format(parseISO(createdAt), "PPP"); // e.g., "Jan 1, 2024"
+                acc[dateKey] = acc[dateKey] || [];
+                acc[dateKey].push({ _id, imageUrl, createdAt });
                 return acc;
-            },
-            {} as Record<
-                string,
-                Array<{
-                    _id: string;
-                    imageUrls: string[];
-                    createdAt: string;
-                }>
-            >
-        );
-
-        return grouped;
+            }, {});
     }, [data]);
 
     const formatDateHeader = (dateString: string) => {
@@ -165,45 +149,32 @@ export default function page() {
                                     </div>
 
                                     {/* Images Grid for this date */}
-                                    <div className=''>
+                                    <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2'>
                                         {images.map((image, index) => (
                                             <div
                                                 key={`image-${dateKey}-${index}`}
-                                                className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2'
+                                                className='mb-2 relative group'
                                             >
-                                                {image.imageUrls.map(
-                                                    (img, idx) => (
-                                                        <div
-                                                            key={idx}
-                                                            className='mb-2 relative group'
-                                                        >
-                                                            {/* Image */}
-                                                            <img
-                                                                src={img}
-                                                                alt={`Generated image ${
-                                                                    index * idx
-                                                                }`}
-                                                                className='w-full shadow-md cursor-pointer hover:shadow-lg transition-shadow duration-200'
-                                                                loading='lazy'
-                                                            />
+                                                {/* Image */}
+                                                <img
+                                                    src={image.imageUrl} // Changed from image.imageUrls to image.imageUrl
+                                                    alt={`Generated image ${index}`}
+                                                    className='w-full shadow-md cursor-pointer hover:shadow-lg transition-shadow duration-200'
+                                                    loading='lazy'
+                                                />
 
-                                                            {/* Zoom Icon on Hover */}
-                                                            <div
-                                                                className='absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/50 bg-opacity-30  ease-in-out'
-                                                                onClick={(
-                                                                    e
-                                                                ) => {
-                                                                    e.preventDefault(); // Prevent Link navigation
-                                                                    setSelectedImage(
-                                                                        img
-                                                                    ); // Open modal with selected image
-                                                                }}
-                                                            >
-                                                                <Maximize2 className='text-white w-5 h-5 cursor-pointer' />
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                )}
+                                                {/* Zoom Icon on Hover */}
+                                                <div
+                                                    className='absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/50 bg-opacity-30 ease-in-out'
+                                                    onClick={(e) => {
+                                                        e.preventDefault(); // Prevent Link navigation
+                                                        setSelectedImage(
+                                                            image.imageUrl
+                                                        ); // Changed from img to image.imageUrl
+                                                    }}
+                                                >
+                                                    <Maximize2 className='text-white w-5 h-5 cursor-pointer' />
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -230,7 +201,6 @@ export default function page() {
                                 alt='Enlarged image'
                                 className='w-full max-h-[80vh] object-contain mx-auto mb-4'
                             />
-
 
                             {/* Like and Download Buttons */}
                             <div className='flex justify-center space-x-4'>
