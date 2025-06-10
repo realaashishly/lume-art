@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AspectRatio } from "@/lib/types";
 import { fetchImages } from "@/utils/fetchImages";
 import { useQuery } from "@tanstack/react-query";
+import { Download, Heart, Maximize2, X, ZoomIn } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -13,6 +14,23 @@ export default function page() {
     const [loading, setLoading] = useState<boolean>(false);
     const [skeletonRatio, setSkeletonRatio] = useState<AspectRatio>("3:4");
     const [skeletonCount, setSkeletonCount] = useState<number>(0);
+    const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+    // Function to handle image download
+    const handleDownload = (imageUrl: string) => {
+        const link = document.createElement("a");
+        link.href = imageUrl;
+        link.download = imageUrl.split("/").pop() || "image.jpg";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // Function to handle like (placeholder for actual like functionality)
+    const handleLike = (imageUrl: string) => {
+        console.log(`Liked image: ${imageUrl}`);
+        // Add actual like functionality here (e.g., API call)
+    };
 
     // Fetch images using React Query
     const {
@@ -133,6 +151,7 @@ export default function page() {
                     </div>
                 )}
 
+                {/* Image Grid */}
                 <div>
                     {Object.keys(organizedImages).length > 0 &&
                         Object.entries(organizedImages).map(
@@ -147,15 +166,8 @@ export default function page() {
 
                                     {/* Images Grid for this date */}
                                     <div className=''>
-                                        {(
-                                            images as Array<{
-                                                _id: string;
-                                                imageUrls: string[];
-                                                createdAt: string;
-                                            }>
-                                        ).map((image, index) => (
-                                            <Link
-                                                href={`/g/${image._id}`}
+                                        {images.map((image, index) => (
+                                            <div
                                                 key={`image-${dateKey}-${index}`}
                                                 className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2'
                                             >
@@ -163,8 +175,9 @@ export default function page() {
                                                     (img, idx) => (
                                                         <div
                                                             key={idx}
-                                                            className='mb-2'
+                                                            className='mb-2 relative group'
                                                         >
+                                                            {/* Image */}
                                                             <img
                                                                 src={img}
                                                                 alt={`Generated image ${
@@ -173,16 +186,74 @@ export default function page() {
                                                                 className='w-full shadow-md cursor-pointer hover:shadow-lg transition-shadow duration-200'
                                                                 loading='lazy'
                                                             />
+
+                                                            {/* Zoom Icon on Hover */}
+                                                            <div
+                                                                className='absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/50 bg-opacity-30  ease-in-out'
+                                                                onClick={(
+                                                                    e
+                                                                ) => {
+                                                                    e.preventDefault(); // Prevent Link navigation
+                                                                    setSelectedImage(
+                                                                        img
+                                                                    ); // Open modal with selected image
+                                                                }}
+                                                            >
+                                                                <Maximize2 className='text-white w-5 h-5 cursor-pointer' />
+                                                            </div>
                                                         </div>
                                                     )
                                                 )}
-                                            </Link>
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
                             )
                         )}
                 </div>
+
+                {/* Modal for Enlarged Image */}
+                {selectedImage && (
+                    <div className='fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80'>
+                        <div className='relative bg-black rounded-lg max-w-3xl w-full'>
+                            {/* Close Button */}
+                            <button
+                                className='absolute top-4 right-4 text-white hover:text-gray-300'
+                                onClick={() => setSelectedImage(null)}
+                            >
+                                <X className='w-6 h-6' />
+                            </button>
+
+                            {/* Enlarged Image */}
+                            <img
+                                src={selectedImage}
+                                alt='Enlarged image'
+                                className='w-full max-h-[80vh] object-contain mx-auto mb-4'
+                            />
+
+
+                            {/* Like and Download Buttons */}
+                            <div className='flex justify-center space-x-4'>
+                                <button
+                                    className='flex items-center space-x-2 text-white hover:text-gray-300'
+                                    onClick={() => handleLike(selectedImage)}
+                                >
+                                    <Heart className='w-5 h-5' />
+                                    <span>Like</span>
+                                </button>
+                                <button
+                                    className='flex items-center space-x-2 text-white hover:text-gray-300'
+                                    onClick={() =>
+                                        handleDownload(selectedImage)
+                                    }
+                                >
+                                    <Download className='w-5 h-5' />
+                                    <span>Download</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {!(loading || isFetchingImages) &&
                     (!data || data.length === 0) && (

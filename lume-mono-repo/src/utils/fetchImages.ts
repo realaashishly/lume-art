@@ -43,6 +43,30 @@ export const fetchImages = async (): Promise<GeneratedImage[]> => {
     }
 };
 
+export const fetchImageById = async (
+    id: string
+): Promise<GeneratedImage | undefined> => {
+    try {
+        const response = await axios.get(`/api/v1/images/${id}`);
+
+        // Check if the response has valid data
+        if (response.status !== 200 || !response.data?.data) {
+            console.warn(`No image found for ID: ${id}`);
+            return undefined;
+        }
+
+        console.log("FetchImageById Response: ", response.data);
+        return response.data.data as GeneratedImage;
+    } catch (error) {
+        const axiosError = error as AxiosError;
+        console.error(
+            `Failed to fetch image with ID ${id}:`,
+            axiosError.message
+        );
+        throw new Error(`Failed to fetch image: ${axiosError.message}`);
+    }
+};
+
 // Delete image function
 export const deleteImage = async (imageId: string): Promise<void> => {
     try {

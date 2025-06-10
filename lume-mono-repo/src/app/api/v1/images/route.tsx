@@ -77,14 +77,61 @@ export async function POST(req: NextRequest) {
     }
 }
 
-export async function GET() {
+// export async function GET() {
+//     try {
+//         await connectToDatabase();
+
+        
+        
+
+//         // Get session for GET request as well
+//         const session = await auth.api.getSession({
+//             headers: await headers(),
+//         });
+
+//         const userId = session?.user?.id || session?.session?.userId;
+
+//         if (!userId) {
+//             return NextResponse.json(
+//                 { error: "Unauthorized" },
+//                 { status: 401 }
+//             );
+//         }
+
+
+//         const images = await GeneratedImage.find({ userId: userId }).sort({
+//             createdAt: -1,
+//         });
+
+        
+
+//         // You can add logic here to retrieve images for the user
+//         // For now, just returning success message
+//         return NextResponse.json(
+//             {
+//                 success: true,
+//                 message: "Retrieve Image Successfully",
+//                 data: images,
+//             },
+//             { status: 200 }
+//         );
+//     } catch (error) {
+//         console.error("Get images API error:", error);
+//         return NextResponse.json(
+//             {
+//                 error: "Internal server error",
+//                 details:
+//                     error instanceof Error ? error.message : "Unknown error",
+//             },
+//             { status: 500 }
+//         );
+//     }
+// }
+
+export async function GET(req: NextRequest) {
     try {
         await connectToDatabase();
 
-        
-        
-
-        // Get session for GET request as well
         const session = await auth.api.getSession({
             headers: await headers(),
         });
@@ -98,19 +145,13 @@ export async function GET() {
             );
         }
 
+        // Otherwise, get all images for this user
+        const images = await GeneratedImage.find({ userId }).sort({ createdAt: -1 });
 
-        const images = await GeneratedImage.find({ userId: userId }).sort({
-            createdAt: -1,
-        });
-
-        
-
-        // You can add logic here to retrieve images for the user
-        // For now, just returning success message
         return NextResponse.json(
             {
                 success: true,
-                message: "Retrieve Image Successfully",
+                message: "Retrieve Images Successfully",
                 data: images,
             },
             { status: 200 }
@@ -127,3 +168,4 @@ export async function GET() {
         );
     }
 }
+

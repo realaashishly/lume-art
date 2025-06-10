@@ -108,12 +108,14 @@ export default function ImagePromptInput({
                 setSkeletonCount(parseInt(variations));
 
                 // Generate title for image
-                const titleResponse = await axios.post("/api/v1/title", {
-                    prompt,
-                });
+                // const titleResponse = await axios.post("/api/v1/title", {
+                //     prompt,
+                // });
 
-                const title =
-                    (await titleResponse.data.title) || prompt.slice(0, 10);
+                // const title =
+                //     (await titleResponse.data.title) || prompt.slice(0, 10);
+
+                const title = prompt.slice(1, 10);
 
                 // Generate images concurrently
                 const imagePromises = Array.from(
