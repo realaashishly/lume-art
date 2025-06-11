@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Download, Heart, Maximize2, X } from "lucide-react";
 import { format, parseISO, isValid, isToday, isYesterday } from "date-fns";
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 // Enhanced type for image with batch information
 type Image = {
@@ -179,108 +180,104 @@ export default function Page() {
                 )}
 
                 {/* Image Grid by Date and Batch */}
-             
-                    <div>
-                        {Object.entries(groupedImagesByDate)
-                            .sort(
-                                ([a], [b]) =>
-                                    new Date(b).getTime() -
-                                    new Date(a).getTime()
-                            )
-                            .map(([dateKey, batches]) => (
-                                <div key={dateKey} className='mb-12'>
-                                    <h2 className='text-2xl font-semibold text-white mb-6 sticky top-4 py-2 rounded-lg'>
-                                        {formatDateLabel(dateKey)}
-                                    </h2>
 
-                                    {batches.map((batch) => (
-                                        <div
-                                            key={batch.batchId}
-                                            className='mb-1'
-                                        >
-                                            {/* Batch Images */}
-                                            <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1'>
-                                                {batch.images.map((img) => (
-                                                    <div
-                                                        key={img._id}
-                                                        className='relative group cursor-pointer transform transition-all duration-300'
-                                                    >
-                                                        <div className='relative overflow-hidden shadow-lg transition-shadow duration-300'>
-                                                            <img
-                                                                src={
-                                                                    img.imageUrl
-                                                                }
-                                                                alt={`Generated image from prompt: ${batch.prompt}`}
-                                                                className='w-full h-full object-cover'
-                                                                loading='lazy'
-                                                                onError={(
+                <div>
+                    {Object.entries(groupedImagesByDate)
+                        .sort(
+                            ([a], [b]) =>
+                                new Date(b).getTime() - new Date(a).getTime()
+                        )
+                        .map(([dateKey, batches]) => (
+                            <div key={dateKey} className='mb-12'>
+                                <h2 className='text-2xl font-semibold text-white mb-6 sticky top-4 py-2 rounded-lg'>
+                                    {formatDateLabel(dateKey)}
+                                </h2>
+
+                                {batches.map((batch) => (
+                                    <div key={batch.batchId} className='mb-1'>
+                                        {/* Batch Images */}
+                                        <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1'>
+                                            {batch.images.map((img) => (
+                                                <div
+                                                    key={img._id}
+                                                    className='relative group cursor-pointer transform transition-all duration-300'
+                                                >
+                                                    <div className='relative overflow-hidden shadow-lg transition-shadow duration-300'>
+                                                        <img
+                                                            src={img.imageUrl}
+                                                            alt={`Generated image from prompt: ${batch.prompt}`}
+                                                            className='w-full h-full object-cover'
+                                                            loading='lazy'
+                                                            onError={(e) => {
+                                                                const target =
+                                                                    e.target as HTMLImageElement;
+                                                                target.style.display =
+                                                                    "none";
+                                                            }}
+                                                        />
+
+                                                        {/* Hover Overlay */}
+                                                        <div className='absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3'>
+                                                            <button
+                                                                className='p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors'
+                                                                aria-label='View full size'
+                                                            >
+                                                                <Link
+                                                                    href={`/l/${img._id}`}
+                                                                >
+                                                                    {" "}
+                                                                    <Maximize2 className='text-white w-5 h-5' />
+                                                                </Link>
+                                                            </button>
+
+                                                            <button
+                                                                onClick={(
                                                                     e
                                                                 ) => {
-                                                                    const target =
-                                                                        e.target as HTMLImageElement;
-                                                                    target.style.display =
-                                                                        "none";
+                                                                    e.stopPropagation();
+                                                                    handleLike(
+                                                                        img._id
+                                                                    );
                                                                 }}
-                                                            />
-
-                                                            {/* Hover Overlay */}
-                                                            <div className='absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3'>
-                                                                <button
-                                                                    className='p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors'
-                                                                    aria-label='View full size'
-                                                                >
-                                                                    <Maximize2 className='text-white w-5 h-5' />
-                                                                </button>
-
-                                                                <button
-                                                                    onClick={(
-                                                                        e
-                                                                    ) => {
-                                                                        e.stopPropagation();
-                                                                        handleLike(
+                                                                className='p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors'
+                                                                aria-label='Like image'
+                                                            >
+                                                                <Heart
+                                                                    className={`w-5 h-5 transition-colors ${
+                                                                        likedImages.has(
                                                                             img._id
-                                                                        );
-                                                                    }}
-                                                                    className='p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors'
-                                                                    aria-label='Like image'
-                                                                >
-                                                                    <Heart
-                                                                        className={`w-5 h-5 transition-colors ${
-                                                                            likedImages.has(
-                                                                                img._id
-                                                                            )
-                                                                                ? "text-red-500 fill-red-500"
-                                                                                : "text-white"
-                                                                        }`}
-                                                                    />
-                                                                </button>
+                                                                        )
+                                                                            ? "text-red-500 fill-red-500"
+                                                                            : "text-white"
+                                                                    }`}
+                                                                />
+                                                            </button>
 
-                                                                <button
-                                                                    onClick={(
-                                                                        e
-                                                                    ) => {
-                                                                        e.stopPropagation();
-                                                                        handleDownload(
-                                                                            img.imageUrl,
-                                                                            `generated-${img._id}.png`
-                                                                        );
-                                                                    }}
-                                                                    className='p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors'
-                                                                    aria-label='Download image'
-                                                                >
-                                                                    <Download className='text-white w-5 h-5' />
-                                                                </button>
-                                                            </div>
+                                                            <button
+                                                                onClick={(
+                                                                    e
+                                                                ) => {
+                                                                    e.stopPropagation();
+                                                                    handleDownload(
+                                                                        img.imageUrl,
+                                                                        `generated-${img._id}.png`
+                                                                    );
+                                                                }}
+                                                                className='p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors'
+                                                                aria-label='Download image'
+                                                            >
+                                                                <Download className='text-white w-5 h-5' />
+                                                            </button>
                                                         </div>
                                                     </div>
-                                                ))}
-                                            </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
-                                </div>
-                            ))}
-                    </div>
-            
+                                    </div>
+                                ))}
+                            </div>
+                        ))}
+                </div>
 
                 {/* Empty State */}
                 {!isLoading && !hasData && !hasError && (
