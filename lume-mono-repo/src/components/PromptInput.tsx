@@ -17,41 +17,56 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { aspectMap, imageOptions } from "@/lib/constant";
+import { aspectOptions, imageCount, styleOptions } from "@/contant";
+import { aspectMap } from "@/lib/constant";
 import { AspectRatio, formSchema, FormValues } from "@/lib/types";
+import { storeImage } from "@/utils/fetchImages";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
-import { ArrowUp, Ghost, LoaderCircle, WandSparkles } from "lucide-react";
-import { useCallback, useState } from "react";
+import axios, { AxiosError } from "axios";
+import {
+    ArrowUp,
+    Ghost,
+    LoaderCircle,
+    WandSparkles,
+    CheckCircle,
+} from "lucide-react";
+import { useCallback, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
+import debug from "debug";
+import { v4 as uuid } from "uuid";
 
-// Store image function with proper typing
-const storeImage = async (imageData: {
-    prompt: string;
-    title?: string;
-    imageUrls: string[];
-    aspect: AspectRatio;
-    variations: string;
-    enhance: boolean;
-    style?: string;
-}): Promise<void> => {
-    await axios.post("/api/v1/images", imageData);
-};
+// Debug logger
+const dbgr = debug("development:PromptInput");
 
-export default function ImagePromptInput({
-    setLoading,
-    loading,
-    setSkeletonCount,
-    setSkeletonRatio,
-}: {
+type Props = {
     setLoading: (loading: boolean) => void;
     loading: boolean;
     setSkeletonRatio: (skeletonratio: AspectRatio) => void;
     setSkeletonCount: (skeletonCount: number) => void;
-}) {
+};
+
+type GenerationProgress = {
+    total: number;
+    completed: number;
+    failed: number;
+    status: "idle" | "generating" | "storing" | "complete" | "error";
+};
+
+export default function ImagePromptInput(props: Props) {
+    const { setLoading, loading, setSkeletonCount, setSkeletonRatio } = props;
+
     const [isEnhanceOn, setIsEnhanceOn] = useState<boolean>(false);
+    const [progress, setProgress] = useState<GenerationProgress>({
+        total: 0,
+        completed: 0,
+        failed: 0,
+        status: "idle",
+    });
+
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const form = useForm<FormValues>({
         resolver: zodResolver(formSchema),
@@ -59,131 +74,309 @@ export default function ImagePromptInput({
             prompt: "",
             variations: "4",
             aspect: "2:3",
-            style: "realistic",
+            style: "default",
         },
     });
 
     const queryClient = useQueryClient();
 
-    // Store images using React Query mutation
-    const { mutate: storeImageMutation, isPending: isStoringImages } =
-        useMutation({
-            mutationFn: storeImage,
-            onError: (error) => {
-                const errorMessage =
-                    error instanceof Error
-                        ? error.message
-                        : "An unknown error occurred";
-                console.error("Error storing image:", errorMessage);
-                toast("Error", {
-                    description: "Failed to store images. Please try again.",
-                });
-            },
-            onSuccess: () => {
-                queryClient.invalidateQueries({ queryKey: ["images"] });
-            },
-        });
-
-    // Update skeleton size based on form aspect ratio
     const handleSkeletonSize = useCallback(() => {
-        const selectedAspect = form.getValues("aspect") as AspectRatio;
-        setSkeletonRatio(selectedAspect);
-    }, [form]);
+        setSkeletonRatio(form.getValues("aspect") as AspectRatio);
+    }, [form, setSkeletonRatio]);
 
-    // Handle form submission
-    const onSubmit = useCallback(
-        async (values: FormValues) => {
-            try {
-                setLoading(true);
-                const { prompt, variations, aspect, style } = values;
-                const { width, height } = aspectMap[aspect];
+    const resetProgress = () => {
+        setProgress({
+            total: 0,
+            completed: 0,
+            failed: 0,
+            status: "idle",
+        });
+    };
 
-                if (!prompt || !variations || !aspect) {
-                    toast("Error", {
-                        description: "All required fields must be filled.",
-                    });
-                    return;
-                }
+    const cancelGeneration = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        setLoading(false);
+        setSkeletonCount(0);
+        resetProgress();
+        toast.info("Generation cancelled");
+    };
 
-                setSkeletonCount(parseInt(variations));
+    async function onSubmit(values: z.infer<typeof formSchema>) {
+        try {
+            // Reset any previous state
+            resetProgress();
+            setLoading(true);
 
-                // Generate title for image
-                // const titleResponse = await axios.post("/api/v1/title", {
-                //     prompt,
-                // });
+            const { prompt, variations, aspect, style } = values;
+            const variationCount = parseInt(variations);
 
-                // const title =
-                //     (await titleResponse.data.title) || prompt.slice(0, 10);
+            if (isNaN(variationCount) || variationCount <= 0) {
+                throw new Error("Invalid number of variations");
+            }
 
-                // const title = prompt.slice(1, 10);
+            // Create abort controller for cancellation
+            abortControllerRef.current = new AbortController();
+            const signal = abortControllerRef.current.signal;
 
-                // Generate images concurrently
-                const imagePromises = Array.from(
-                    { length: parseInt(variations) },
-                    () =>
-                        axios.post<{ image?: string }>("/api/v1/create", {
-                            prompt,
-                            width,
-                            height,
-                            enhance: isEnhanceOn,
-                            style,
-                        })
-                );
+            // Generate unique batch ID
+            const batchId = uuid();
 
-                const responses = await Promise.all(imagePromises);
-                const generatedImages: string[] = [];
+            // Initialize progress
+            setProgress({
+                total: variationCount,
+                completed: 0,
+                failed: 0,
+                status: "generating",
+            });
 
-                responses.forEach((res, index) => {
-                    const imageUrl = res.data.image;
-                    if (!imageUrl) {
-                        console.log(`No image URL in response ${index + 1}`);
-                        return;
+            setSkeletonCount(variationCount);
+            handleSkeletonSize();
+
+            const { width, height } = aspectMap[aspect] || {
+                width: 512,
+                height: 512,
+            };
+            const generatedImages: string[] = [];
+            const failedImages: number[] = [];
+
+            // Create promises for all image generations
+            const promises = Array.from(
+                { length: variationCount },
+                async (_, index) => {
+                    try {
+                        if (signal.aborted) {
+                            throw new Error("Generation was cancelled");
+                        }
+
+                        const response = await axios.post(
+                            "/api/v1/create",
+                            {
+                                prompt,
+                                width,
+                                height,
+                                enhance: isEnhanceOn,
+                                style,
+                            },
+                            { signal }
+                        );
+
+                        if (response?.data?.image) {
+                            generatedImages.push(response.data.image);
+
+                            // Update progress
+                            setProgress((prev) => ({
+                                ...prev,
+                                completed: prev.completed + 1,
+                            }));
+
+                            // // Reduce skeleton count as images complete
+                            // setSkeletonCount(
+                            //     Math.max(
+                            //         0,
+                            //         variationCount - generatedImages.length
+                            //     )
+                            // );
+
+                            return {
+                                success: true,
+                                imageUrl: response.data.image,
+                                index,
+                            };
+                        } else {
+                            throw new Error("No image URL in response");
+                        }
+                    } catch (error) {
+                        if (axios.isCancel(error) || signal.aborted) {
+                            throw error; // Re-throw cancellation errors
+                        }
+
+                        failedImages.push(index);
+                        setProgress((prev) => ({
+                            ...prev,
+                            failed: prev.failed + 1,
+                        }));
+
+                        dbgr(
+                            `Image generation failed for index ${index}:`,
+                            error
+                        );
+                        return {
+                            success: false,
+                            error:
+                                error instanceof Error
+                                    ? error.message
+                                    : "Unknown error",
+                            index,
+                        };
                     }
-                    generatedImages.push(imageUrl);
-                });
-
-                if (generatedImages.length === 0) {
-                    throw new Error("No images were generated successfully");
                 }
+            );
 
-                // Store the generated image data
-                storeImageMutation({
+            // Wait for all generations to complete
+            const results = await Promise.allSettled(promises);
+
+            // Check if operation was cancelled
+            if (signal.aborted) {
+                return;
+            }
+
+            // Filter successful results
+            const successfulResults = results
+                .filter(
+                    (
+                        result
+                    ): result is PromiseFulfilledResult<{
+                        success: true;
+                        imageUrl: string;
+                        index: number;
+                    }> => result.status === "fulfilled" && result.value.success
+                )
+                .map((result) => result.value);
+
+            if (successfulResults.length === 0) {
+                throw new Error("No images were generated successfully");
+            }
+
+            // Update progress to storing phase
+            setProgress((prev) => ({
+                ...prev,
+                status: "storing",
+            }));
+
+            // Store all successful images in batch
+            const storePromises = successfulResults.map((result) =>
+                storeImage({
+                    batchId,
                     prompt,
-                    imageUrls: generatedImages,
+                    imageUrl: result.imageUrl,
+                    style,
                     aspect,
                     variations,
                     enhance: isEnhanceOn,
-                    style,
-                });
+                })
+            );
 
-                toast("Success", {
-                    description: `${generatedImages.length} image(s) generated successfully.`,
-                });
+            // Wait for all images to be stored
+            await Promise.allSettled(storePromises);
 
-                form.resetField("prompt");
-            } catch (error) {
-                const errorMessage =
-                    error instanceof Error
-                        ? error.message
-                        : "An unknown error occurred";
-                console.error("Error submitting form:", errorMessage);
-                toast("Error", {
-                    description: "Failed to generate images. Please try again.",
+            // Update progress to complete
+            setProgress((prev) => ({
+                ...prev,
+                status: "complete",
+            }));
+
+            // Show success message
+            const successCount = successfulResults.length;
+            const failedCount = failedImages.length;
+
+            if (failedCount > 0) {
+                toast.warning(`Generated ${successCount} images`, {
+                    description: `${failedCount} images failed to generate`,
                 });
-            } finally {
-                setLoading(false);
-                setSkeletonCount(0);
-                handleSkeletonSize();
+            } else {
+                toast.success(`Successfully generated ${successCount} images!`);
             }
-        },
-        [isEnhanceOn, storeImageMutation, handleSkeletonSize, setLoading, form]
-    );
+
+            // Clear the form
+            form.resetField("prompt");
+
+            // Invalidate queries to refresh the gallery
+            queryClient.invalidateQueries({ queryKey: ["images"] });
+
+            console.log("Generated images:", generatedImages);
+            return generatedImages;
+        } catch (error) {
+            if (axios.isCancel(error)) {
+                console.log("Request was cancelled");
+                return;
+            }
+
+            const errorMessage =
+                error instanceof Error ? error.message : "Unknown error";
+            dbgr("Error occurred while submitting form:", errorMessage);
+
+            setProgress((prev) => ({
+                ...prev,
+                status: "error",
+            }));
+
+            toast.error("Generation failed", {
+                description: "Failed to generate images. Please try again.",
+            });
+
+            return null;
+        } finally {
+            setLoading(false);
+            setSkeletonCount(0);
+            abortControllerRef.current = null;
+
+            // Reset progress after a delay
+            setTimeout(() => {
+                resetProgress();
+            }, 3000);
+        }
+    }
+
+    const getProgressText = () => {
+        const { status, completed, total, failed } = progress;
+
+        switch (status) {
+            case 'generating':
+                return `Generating ${completed}/${total} images${failed > 0 ? ` (${failed} failed)` : ''}`;
+            case 'storing':
+                return 'Saving images...';
+            case 'complete':
+                return `✅ Generated ${completed} images successfully!`;
+            case 'error':
+                return '❌ Generation failed';
+            default:
+                return '';
+        }
+    };
+
+    const progressPercentage = progress.total > 0
+        ? ((progress.completed + progress.failed) / progress.total) * 100
+        : 0;
 
     return (
         <div className='w-full relative'>
+            {/* Progress Bar */} 
+             {progress.status !== 'idle' && (
+                <div className='fixed top-2 left-1/2 transform -translate-x-1/2 bg-zinc-800 rounded-lg p-4 shadow-lg border border-zinc-700 z-40'>
+                    <div className='flex items-center justify-between mb-2'>
+                        <span className='text-white text-sm font-medium'>
+                            {getProgressText()}
+                        </span>
+                        {loading && (
+                            <button
+                                onClick={cancelGeneration}
+                                className='text-red-400 hover:text-red-300 text-sm ml-4 cursor-pointer'
+                            >
+                                Cancel
+                            </button>
+                        )}
+                    </div>
+                    <div className='w-64 bg-zinc-700 rounded-full h-2'>
+                        <div
+                            className={`h-2 rounded-full transition-all duration-300 ${
+                                progress.status === 'complete' 
+                                    ? 'bg-green-500' 
+                                    : progress.status === 'error'
+                                    ? 'bg-red-500'
+                                    : 'bg-blue-500'
+                            }`}
+                            style={{ width: `${progressPercentage}%` }}
+                        />
+                    </div>
+                </div>
+            )}
+
             <div
                 id='promptInput'
-                className='w-[700px] fixed bottom-3 left-0 right-0 mx-auto mt-10 p-4 bg-zinc-800 rounded-2xl shadow-md'
+                className='w-[700px] fixed bottom-3 left-0 right-0 mx-auto mt-10 p-4 bg-zinc-800 rounded-2xl shadow-md border border-zinc-700'
                 role='form'
                 aria-label='Image generation form'
             >
@@ -205,14 +398,17 @@ export default function ImagePromptInput({
                                                     !e.shiftKey
                                                 ) {
                                                     e.preventDefault();
-                                                    form.handleSubmit(
-                                                        onSubmit
-                                                    )();
+                                                    if (!loading) {
+                                                        form.handleSubmit(
+                                                            onSubmit
+                                                        )();
+                                                    }
                                                 }
                                             }}
                                             placeholder='Describe your image...'
-                                            className='w-full resize-none min-h-2 border-none dark:bg-transparent focus:bg-transparent focus:ring-0 focus:border-none focus-visible:ring-0'
+                                            className='w-full resize-none min-h-2 border-none dark:bg-transparent focus:bg-transparent focus:ring-0 focus:border-none focus-visible:ring-0 text-white placeholder-zinc-400'
                                             aria-label='Image description input'
+                                            disabled={loading}
                                             {...field}
                                         />
                                     </FormControl>
@@ -223,91 +419,10 @@ export default function ImagePromptInput({
 
                         <div className='flex items-center justify-between'>
                             <div className='flex flex-row items-center gap-2'>
+                                {/* Style Selection */}
                                 <FormField
                                     control={form.control}
-                                    name='aspect'
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormControl>
-                                                <Select
-                                                    onValueChange={(value) => {
-                                                        field.onChange(value);
-                                                        handleSkeletonSize();
-                                                    }}
-                                                    value={field.value}
-                                                >
-                                                    <SelectTrigger
-                                                        className='w-fit bg-zinc-700 text-white border-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-md shadow-sm'
-                                                        aria-label='Select aspect ratio'
-                                                    >
-                                                        <SelectValue placeholder='Select aspect ratio' />
-                                                    </SelectTrigger>
-                                                    <SelectContent className='bg-zinc-700 text-white border-none shadow-lg'>
-                                                        <SelectGroup>
-                                                            <SelectLabel className='text-gray-300'>
-                                                                Aspect Ratio
-                                                            </SelectLabel>
-                                                            <SelectItem value='1:1'>
-                                                                1:1 (Square)
-                                                            </SelectItem>
-                                                            <SelectItem value='3:2'>
-                                                                3:2 (Landscape)
-                                                            </SelectItem>
-                                                            <SelectItem value='2:3'>
-                                                                2:3 (Portrait)
-                                                            </SelectItem>
-                                                            <SelectItem value='4:3'>
-                                                                4:3 (Standard)
-                                                            </SelectItem>
-                                                            <SelectItem value='3:4'>
-                                                                3:4 (Portrait)
-                                                            </SelectItem>
-                                                            <SelectItem value='16:9'>
-                                                                16:9
-                                                                (Widescreen)
-                                                            </SelectItem>
-                                                            <SelectItem value='9:16'>
-                                                                9:16 (Mobile
-                                                                Portrait)
-                                                            </SelectItem>
-                                                            <SelectItem value='21:9'>
-                                                                21:9
-                                                                (Ultra-Wide)
-                                                            </SelectItem>
-                                                            <SelectItem value='9:21'>
-                                                                9:21 (Tall
-                                                                Ultra-Wide)
-                                                            </SelectItem>
-                                                            <SelectItem value='5:4'>
-                                                                5:4
-                                                            </SelectItem>
-                                                            <SelectItem value='4:5'>
-                                                                4:5
-                                                            </SelectItem>
-                                                            <SelectItem value='7:5'>
-                                                                7:5
-                                                            </SelectItem>
-                                                            <SelectItem value='5:7'>
-                                                                5:7
-                                                            </SelectItem>
-                                                            <SelectItem value='2:1'>
-                                                                2:1 (Banner)
-                                                            </SelectItem>
-                                                            <SelectItem value='1:2'>
-                                                                1:2
-                                                            </SelectItem>
-                                                        </SelectGroup>
-                                                    </SelectContent>
-                                                </Select>
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-
-                                <FormField
-                                    control={form.control}
-                                    name='variations'
+                                    name='style'
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormControl>
@@ -316,30 +431,31 @@ export default function ImagePromptInput({
                                                         field.onChange
                                                     }
                                                     value={field.value}
+                                                    disabled={loading}
                                                 >
                                                     <SelectTrigger
                                                         className='w-fit bg-zinc-700 text-white border-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-md shadow-sm'
-                                                        aria-label='Select number of variations'
+                                                        aria-label='Select image style'
                                                     >
-                                                        <SelectValue placeholder='Select variations' />
+                                                        <SelectValue placeholder='Select style' />
                                                     </SelectTrigger>
                                                     <SelectContent className='bg-zinc-700 text-white border-none shadow-lg'>
                                                         <SelectGroup>
                                                             <SelectLabel className='text-gray-300'>
-                                                                Variations
+                                                                Image Style
                                                             </SelectLabel>
-                                                            {imageOptions.map(
-                                                                (opt) => (
+                                                            {styleOptions.map(
+                                                                (style) => (
                                                                     <SelectItem
                                                                         key={
-                                                                            opt.value
+                                                                            style.id
                                                                         }
                                                                         value={
-                                                                            opt.value
+                                                                            style.value
                                                                         }
                                                                     >
                                                                         {
-                                                                            opt.label
+                                                                            style.label
                                                                         }
                                                                     </SelectItem>
                                                                 )
@@ -353,44 +469,48 @@ export default function ImagePromptInput({
                                     )}
                                 />
 
+                                {/* Aspect Ratio Selection */}
                                 <FormField
                                     control={form.control}
-                                    name='style'
+                                    name='aspect'
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormControl>
                                                 <Select
-                                                    onValueChange={
-                                                        field.onChange
-                                                    }
+                                                    onValueChange={(value) => {
+                                                        field.onChange(value);
+                                                        handleSkeletonSize();
+                                                    }}
                                                     value={field.value}
+                                                    disabled={loading}
                                                 >
                                                     <SelectTrigger
                                                         className='w-fit bg-zinc-700 text-white border-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-md shadow-sm'
-                                                        aria-label='Select image style'
+                                                        aria-label='Select aspect ratio'
                                                     >
-                                                        <SelectValue placeholder='Select style' />
+                                                        <SelectValue placeholder='Select aspect ratio' />
                                                     </SelectTrigger>
                                                     <SelectContent className='bg-zinc-700 text-white border-none shadow-lg'>
                                                         <SelectGroup>
                                                             <SelectLabel className='text-gray-300'>
-                                                                Image Style
+                                                                Aspect Ratio
                                                             </SelectLabel>
-                                                            <SelectItem value='realistic'>
-                                                                Realistic
-                                                            </SelectItem>
-                                                            <SelectItem value='cartoon'>
-                                                                Cartoon
-                                                            </SelectItem>
-                                                            <SelectItem value='abstract'>
-                                                                Abstract
-                                                            </SelectItem>
-                                                            <SelectItem value='painting'>
-                                                                Painting
-                                                            </SelectItem>
-                                                            <SelectItem value='sketch'>
-                                                                Sketch
-                                                            </SelectItem>
+                                                            {aspectOptions.map(
+                                                                (aspect) => (
+                                                                    <SelectItem
+                                                                        key={
+                                                                            aspect.id
+                                                                        }
+                                                                        value={
+                                                                            aspect.value
+                                                                        }
+                                                                    >
+                                                                        {
+                                                                            aspect.label
+                                                                        }
+                                                                    </SelectItem>
+                                                                )
+                                                            )}
                                                         </SelectGroup>
                                                     </SelectContent>
                                                 </Select>
@@ -400,22 +520,79 @@ export default function ImagePromptInput({
                                     )}
                                 />
 
+                                {/* Variations Count Selection */}
+                                <FormField
+                                    control={form.control}
+                                    name='variations'
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormControl>
+                                                <Select
+                                                    onValueChange={
+                                                        field.onChange
+                                                    }
+                                                    value={field.value}
+                                                    disabled={loading}
+                                                >
+                                                    <SelectTrigger
+                                                        className='w-fit bg-zinc-700 text-white border-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-md shadow-sm'
+                                                        aria-label='Select number of variations'
+                                                    >
+                                                        <SelectValue placeholder='Select variations' />
+                                                    </SelectTrigger>
+                                                    <SelectContent className='bg-zinc-700 text-white border-none shadow-lg'>
+                                                        <SelectGroup>
+                                                            <SelectLabel className='text-gray-300'>
+                                                                Variations
+                                                            </SelectLabel>
+                                                            {imageCount.map(
+                                                                (img) => (
+                                                                    <SelectItem
+                                                                        key={
+                                                                            img.label
+                                                                        }
+                                                                        value={
+                                                                            img.value
+                                                                        }
+                                                                    >
+                                                                        {
+                                                                            img.label
+                                                                        }
+                                                                    </SelectItem>
+                                                                )
+                                                            )}
+                                                        </SelectGroup>
+                                                    </SelectContent>
+                                                </Select>
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                {/* Enhance Toggle */}
                                 <div
-                                    className={`p-[0.5rem] rounded-md text-sm cursor-pointer text-white flex items-center gap-1 ${
+                                    className={`p-[0.5rem] rounded-md text-sm cursor-pointer text-white flex items-center gap-1 transition-all duration-200 ${
                                         isEnhanceOn
-                                            ? "bg-input/60"
-                                            : "bg-input/30"
+                                            ? "bg-blue-600/60 hover:bg-blue-600/80"
+                                            : "bg-zinc-700/60 hover:bg-zinc-700/80"
+                                    } ${
+                                        loading
+                                            ? "opacity-50 cursor-not-allowed"
+                                            : ""
                                     }`}
-                                    onClick={() => setIsEnhanceOn(!isEnhanceOn)}
+                                    onClick={() =>
+                                        !loading && setIsEnhanceOn(!isEnhanceOn)
+                                    }
                                     role='button'
                                     aria-label={`Toggle enhance ${
                                         isEnhanceOn ? "on" : "off"
                                     }`}
-                                    tabIndex={0}
+                                    tabIndex={loading ? -1 : 0}
                                     onKeyDown={(e) => {
                                         if (
-                                            e.key === "Enter" ||
-                                            e.key === " "
+                                            !loading &&
+                                            (e.key === "Enter" || e.key === " ")
                                         ) {
                                             e.preventDefault();
                                             setIsEnhanceOn(!isEnhanceOn);
@@ -436,28 +613,53 @@ export default function ImagePromptInput({
                                         )}
                                     </span>
                                     <span>Enhance</span>
-                                    <span>{isEnhanceOn ? "on" : "off"}</span>
+                                    <span
+                                        className={`px-1 py-0.5 rounded text-xs ${
+                                            isEnhanceOn
+                                                ? "bg-blue-500/50"
+                                                : "bg-zinc-600/50"
+                                        }`}
+                                    >
+                                        {isEnhanceOn ? "ON" : "OFF"}
+                                    </span>
                                 </div>
                             </div>
 
+                            {/* Submit Button */}
                             <button
                                 type='submit'
-                                className='px-4 py-2 rounded-md bg-input/60 text-white font-semibold cursor-pointer hover:bg-input/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
-                                disabled={
-                                    !form.formState.isValid ||
-                                    loading ||
-                                    isStoringImages
+                                className={`px-6 py-2 rounded-md font-semibold transition-all duration-200 flex items-center gap-2 ${
+                                    loading
+                                        ? "bg-red-600/60 hover:bg-red-600/80 text-white"
+                                        : !form.formState.isValid
+                                        ? "bg-zinc-600/50 text-zinc-400 cursor-not-allowed"
+                                        : "bg-blue-600/60 hover:bg-blue-600/80 text-white hover:shadow-lg"
+                                }`}
+                                disabled={!form.formState.isValid && !loading}
+                                aria-label={
+                                    loading
+                                        ? "Cancel generation"
+                                        : "Submit image generation form"
                                 }
-                                aria-label='Submit image generation form'
                             >
-                                {loading || isStoringImages ? (
-                                    <LoaderCircle
-                                        size={18}
-                                        className='animate-spin'
-                                        aria-hidden='true'
-                                    />
+                                {loading ? (
+                                    <>
+                                        <LoaderCircle
+                                            size={18}
+                                            className='animate-spin'
+                                            aria-hidden='true'
+                                        />
+                                        <span className='hidden sm:inline'>
+                                            Cancel
+                                        </span>
+                                    </>
                                 ) : (
-                                    <ArrowUp size={18} aria-hidden='true' />
+                                    <>
+                                        <ArrowUp size={18} aria-hidden='true' />
+                                        <span className='hidden sm:inline'>
+                                            Generate
+                                        </span>
+                                    </>
                                 )}
                             </button>
                         </div>

@@ -16,9 +16,4 @@ export const aspectMap = {
     "1:2": { width: 512, height: 1024 },
 };
 
-export const imageOptions = [
-  { value: '1', short: '1v', label: '1 image' },
-  { value: '2', short: '2v', label: '2 images' },
-  { value: '4', short: '4v', label: '4 images' },
-  { value: '8', short: '8v', label: '8 images' },
-];
+

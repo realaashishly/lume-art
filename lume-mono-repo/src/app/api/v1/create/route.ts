@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -28,7 +28,6 @@ export async function POST(req: NextRequest) {
             prompt
         )}`;
 
-
         const response = await axios.get(url, {
             params: {
                 seed,
@@ -54,7 +53,8 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ image: generatedImageUrl }, { status: 200 });
     } catch (error) {
-        console.log("Error in image generation:", error);
+        const AxiosError = error as AxiosError;
+        console.log("Error in image generation:", AxiosError.message);
         return NextResponse.json(
             {
                 error: "Internal server error",

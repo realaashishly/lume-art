@@ -25,34 +25,26 @@ export async function POST(req: NextRequest) {
         const requestBody = await req.json();
         const imageData = requestBody.imageData || requestBody;
 
-        const { prompt, title, imageUrls, variations, aspect, enhance, style } =
-            imageData;
+         const { prompt, imageUrl, aspect, enhance, style, batchId } =
+             imageData;
 
-        if (
-            !prompt ||
-            !imageUrls ||
-            !Array.isArray(imageUrls) ||
-            imageUrls.length === 0
-        ) {
-            return NextResponse.json(
-                { error: "Missing required fields: prompt and imageUrls" },
-                { status: 400 }
-            );
-        }
+         if (!prompt || !imageUrl || !aspect) {
+             return NextResponse.json(
+                 { error: "Missing required fields: prompt and imageUrls" },
+                 { status: 400 }
+             );
+         }
 
-        // Create new image document
-        const newImage = new GeneratedImage({
-            userId: userId,
-            prompt: prompt.trim(),
-            title: title?.content?.trim() || prompt.slice(0, 10),
-            aspectRatio: aspect || "2:3",
-            enhance: Boolean(enhance),
-            style: style || "realistic",
-            imageUrls: imageUrls.filter(
-                (url) => url && typeof url === "string"
-            ),
-            likes: [],
-        });
+         // Create new image document
+         const newImage = new GeneratedImage({
+             userId,
+             batchId,
+             prompt: prompt.trim(),
+             aspectRatio: aspect || "2:3",
+             enhance: Boolean(enhance),
+             style: style || "realistic",
+             imageUrl,
+         });
 
         const savedImage = await newImage.save();
 

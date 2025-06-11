@@ -21,27 +21,23 @@ export type AspectRatio =
 export type GeneratedImage = {
     _id: string;
     userId: string;
-    title: string;
+    batchId: string;
     prompt: string;
-    aspectRatio: AspectRatio; // Changed from 'aspect' to match schema
+    aspectRatio: AspectRatio;
     enhance: boolean;
     style?: string;
-    imageUrls: string[]; // Changed to array to match schema
+    imageUrl: string;
     likes: string[];
     createdAt: string;
     updatedAt: string;
-    // Backward compatibility - some components might still use these
-    imageUrl?: string; // For backward compatibility
-    aspect?: AspectRatio; // For backward compatibility
-    variations?: string; // For backward compatibility
 };
 
 // Define form schema with Zod
 export const formSchema = z.object({
     prompt: z.string().min(2, {
-        message: "Prompt must be at least 2 characters.",
+        message: "The provided prompt is empty or invalid.",
     }),
-    variations: z.enum(["1", "2", "4", "8"]),
+    variations: z.enum(["1", "2", "4"]),
     aspect: z.enum([
         "1:1",
         "3:2",
@@ -60,8 +56,25 @@ export const formSchema = z.object({
         "1:2",
     ]),
     style: z
-        .enum(["realistic", "cartoon", "abstract", "painting", "sketch"])
+        .enum([
+            "default",
+            "realistic",
+            "cartoon",
+            "abstract",
+            "painting",
+            "sketch",
+        ])
         .optional(),
 });
 
 export type FormValues = z.infer<typeof formSchema>;
+
+export type GeneratedImageProps = {
+    batchId: string;
+    prompt: string;
+    imageUrl: string;
+    style?: string;
+    aspect: AspectRatio;
+    variations: string;
+    enhance: boolean;
+};

@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface IGeneratedImage extends Document {
     userId: mongoose.Types.ObjectId;
+    batchId: string;
     prompt: string;
     aspectRatio: string;
     enhance: boolean;
@@ -19,6 +20,10 @@ const GeneratedImageSchema: Schema = new Schema(
             ref: "User",
             required: true,
             index: true,
+        },
+        batchId: {
+            type: String,
+            required: true
         },
         prompt: {
             type: String,
@@ -77,6 +82,7 @@ const GeneratedImageSchema: Schema = new Schema(
     },
     {
         timestamps: true,
+        collection: "generatedImages",
     }
 );
 

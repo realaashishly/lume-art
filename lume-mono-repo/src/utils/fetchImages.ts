@@ -1,69 +1,68 @@
-import { AspectRatio, GeneratedImage } from "@/lib/types";
+import { GeneratedImage, GeneratedImageProps } from "@/lib/types";
 import axios, { AxiosError } from "axios";
+import debug from "debug";
+
+// dbgr
+const dbgr = debug("development:fetchImages");
 
 // Store image function with proper error handling
-export const storeImage = async (imageData: {
-    prompt: string;
-    title: string;
-    imageUrls: string[];
-    aspect: AspectRatio;
-    variations: string;
-    enhance: boolean;
-    style?: string;
-}): Promise<{ success: boolean; data?: any; error?: string }> => {
+export const storeImage = async (imageData: GeneratedImageProps) => {
+
+    console.log("Storing image data here: ", imageData);
+    
     try {
-        const response = await axios.post("/api/store-image", {
-            ...imageData,
-            aspectRatio: imageData.aspect, // Map to schema field name
+        const response = await axios.post("/api/v1/images", {
+            imageData,
         });
-        return { success: true, data: response.data };
+
+        return { success: true, data: response.data, status: 200 };
     } catch (error) {
         const axiosError = error as AxiosError;
-        const errorMessage = (axiosError.response?.data as { message?: string })?.message || 
-                           axiosError.message || 
-                           "Failed to store image";
-        console.error("Store image error:", errorMessage);
-        return { success: false, error: errorMessage };
+        dbgr(
+            "Error occured while storing images: ",
+            axiosError.message
+        );
+        return { success: false, error: axiosError.message, status: 500 };
     }
 };
 
 // Fetch images function with proper error handling
-export const fetchImages = async (): Promise<GeneratedImage[]> => {
+export const fetchImages = async () => {
     try {
         const response = await axios.get("/api/v1/images");
-        console.log("FetchImage Response: ", response);
+        if (!response) return [];
 
-        if(!response) return [];
-        
-        return response.data.data;
+        return { success: true, data: response.data.data, status: 200 };
     } catch (error) {
         const axiosError = error as AxiosError;
-        console.error("Fetch images error:", axiosError.message);
-        throw new Error("Failed to fetch images");
+        dbgr(
+            "Error occured while fetching images -  error:",
+            axiosError.message
+        );
+        return {
+            success: false,
+            data: [],
+            error: axiosError.message,
+            status: 500,
+        };
     }
 };
 
-export const fetchImageById = async (
-    id: string
-): Promise<GeneratedImage | undefined> => {
+export const fetchImageById = async (id: string) => {
     try {
         const response = await axios.get(`/api/v1/images/${id}`);
 
         // Check if the response has valid data
         if (response.status !== 200 || !response.data?.data) {
-            console.warn(`No image found for ID: ${id}`);
-            return undefined;
+            dbgr(`No image found for ID: ${id}`);
+            return { status: false, data: {}, error: "No image found" };
         }
 
-        console.log("FetchImageById Response: ", response.data);
         return response.data.data as GeneratedImage;
     } catch (error) {
         const axiosError = error as AxiosError;
-        console.error(
-            `Failed to fetch image with ID ${id}:`,
-            axiosError.message
-        );
-        throw new Error(`Failed to fetch image: ${axiosError.message}`);
+        dbgr(`Failed to fetch image with ID ${id}:`, axiosError.message);
+        return { success: false, error: axiosError.message, status: 500 };
     }
 };
 
@@ -72,8 +71,8 @@ export const deleteImage = async (imageId: string): Promise<void> => {
     try {
         await axios.delete(`/api/images/${imageId}`);
     } catch (error) {
-        const axiosError = error as AxiosError<{ message: string }>;
-        throw new Error(axiosError.response?.data?.message || "Failed to delete image");
+        const axiosError = error as AxiosError;
+        dbgr("Failed to delete the image: ", axiosError.message);
     }
 };
 
@@ -83,17 +82,8 @@ export const toggleLikeImage = async (imageId: string): Promise<void> => {
         await axios.post(`/api/images/${imageId}/like`);
     } catch (error) {
         const axiosError = error as AxiosError<{ message: string }>;
-        throw new Error(axiosError.response?.data?.message || "Failed to toggle like");
-    }
-};
-
-// Generate image title function
-export const generateImageTitle = async (prompt: string): Promise<string> => {
-    try {
-        const response = await axios.post("/api/v1/title", { prompt });
-        return response.data.title || prompt.slice(0, 50);
-    } catch (error) {
-        console.error("Failed to generate title:", error);
-        return prompt.slice(0, 50) + (prompt.length > 50 ? '...' : '');
+        throw new Error(
+            axiosError.response?.data?.message || "Failed to toggle like"
+        );
     }
 };
