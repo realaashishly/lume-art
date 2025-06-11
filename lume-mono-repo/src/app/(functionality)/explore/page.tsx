@@ -18,6 +18,14 @@ export default function DashboardPage() {
         staleTime: 1000 * 60 * 5,
     });
 
+    // If your API returns an object like { success, data: [...] }
+    // Otherwise just use: images = data;
+    const images = Array.isArray(data)
+        ? data
+        : data?.data && Array.isArray(data.data)
+        ? data.data
+        : [];
+
     if (isFetchingImages) {
         return (
             <LayoutWrapper>
@@ -31,46 +39,37 @@ export default function DashboardPage() {
         );
     }
 
-    if (fetchError || !data?.length) {
+    if (fetchError || images.length === 0) {
         return (
-            <p className='text-center text-gray-500 mt-10'>
-                No best images found.
-            </p>
+            <LayoutWrapper>
+                <Header />
+                <p className='text-center text-gray-500 mt-10'>
+                    No best images found.
+                </p>
+            </LayoutWrapper>
         );
     }
+
     return (
         <LayoutWrapper>
             <div>
                 <Header />
 
                 <div className='relative w-full h-full px-4 mb-8 py-4'>
-                    {data.length > 0 ? (
-                        <div className='columns-2 sm:columns-3 md:columns-4 max-w-full mx-auto gap-2'>
-                            {data.map((image: any, index: number) => (
-                                <Link
-                                    href={`/g/${image._id}`}
-                                    key={image._id || index}
-                                >
-                                    <img
-                                        src={
-                                            image.imageUrls?.[0] ||
-                                            image.imageUrl
-                                        }
-                                        alt={
-                                            image.title || `Image ${index + 1}`
-                                        }
-                                        className='shadow-md w-full mb-2'
-                                    />
-                                </Link>
-                            ))}
-                        </div>
-                    ) : (
-                        !data && (
-                            <div className='absolute inset-0 flex flex-col items-center justify-center text-zinc-300 text-xl space-y-2'>
-                                <p>No images found</p>
-                            </div>
-                        )
-                    )}
+                    <div className='columns-2 sm:columns-3 md:columns-4 max-w-full mx-auto gap-2'>
+                        {images.map((image: any, index: number) => (
+                            <Link
+                                href={`/g/${image._id}`}
+                                key={image._id || index}
+                            >
+                                <img
+                                    src={image.imageUrls?.[0] || image.imageUrl}
+                                    alt={image.title || `Image ${index + 1}`}
+                                    className='shadow-md w-full mb-2'
+                                />
+                            </Link>
+                        ))}
+                    </div>
                 </div>
             </div>
         </LayoutWrapper>
